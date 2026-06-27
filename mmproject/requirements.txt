@@ -4,6 +4,6 @@ python-dotenv
 fastapi
 uvicorn
 sqlalchemy
-trueskill
+openskill
 asyncpg
 aiosqlite
