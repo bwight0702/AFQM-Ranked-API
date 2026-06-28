@@ -1,5 +1,6 @@
 discord
 discord.py
+discord.ext
 python-dotenv
 fastapi
 uvicorn
