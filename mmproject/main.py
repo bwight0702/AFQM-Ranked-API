@@ -8,7 +8,7 @@ import logging
 from dotenv import load_dotenv
 import os
 
-API_URL = "fastapi-production-6ed6.up.railway.app" 
+API_URL = "https://fastapi-production-6ed6.up.railway.app" 
 
 model = PlackettLuce()
 load_dotenv()
