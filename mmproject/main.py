@@ -30,6 +30,10 @@ queue_names = []
 RATINGS_FILE = Path("ratings.json")
 DEFAULT_MU = 25.0
 DEFAULT_SIGMA = 8.333
+LEADERBOARD_CHANNEL_ID = int(os.getenv("LEADERBOARD_CHANNEL_ID", "1520844698007113849"))
+LEADERBOARD_REFRESH_SECONDS = int(os.getenv("LEADERBOARD_REFRESH_SECONDS", "15"))
+LEADERBOARD_LIMIT = int(os.getenv("LEADERBOARD_LIMIT", "10"))
+BOT_TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("TOKEN")
 
 
 def load_player_ratings():
@@ -63,10 +67,66 @@ def update_player_rating(player_id, mu, sigma):
 
 player_ratings = load_player_ratings()
 
+def build_leaderboard_content():
+    rankings = []
+    for player_id, data in player_ratings.items():
+        try:
+            member = bot.get_user(int(player_id))
+            name = member.display_name if member else f"User {player_id}"
+        except (ValueError, discord.HTTPException, discord.NotFound):
+            name = f"User {player_id}"
 
-@bot.event 
+        mu = data.get("mu", DEFAULT_MU)
+        rankings.append((mu, name))
+
+    top_players = sorted(rankings, key=lambda x: x[0], reverse=True)[:LEADERBOARD_LIMIT]
+    ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+
+    if not top_players:
+        return f"Leaderboard last updated: {ts}\nNo ranked players yet."
+
+    lines = [f"Leaderboard last updated: {ts}", "", "**Top 10 Ranked Players**"]
+    for index, (mu, name) in enumerate(top_players, start=1):
+        lines.append(f"{index}. **{name}** — MU: {mu:.2f}")
+
+    return "\n".join(lines)
+
+async def update_leaderboard_message():
+    channel = None
+    try:
+        channel = await bot.fetch_channel(LEADERBOARD_CHANNEL_ID)
+    except Exception:
+        channel = bot.get_channel(LEADERBOARD_CHANNEL_ID)
+
+    if channel is None:
+        for guild in bot.guilds:
+            for text_channel in guild.text_channels:
+                if text_channel.name.lower() in {"leaderboard", "ranked-leaderboard", "bot-spam"}:
+                    channel = text_channel
+                    break
+            if channel is not None:
+                break
+
+    if channel is None:
+        print(f"Leaderboard channel {LEADERBOARD_CHANNEL_ID} not found or inaccessible.")
+        return False
+
+    try:
+        await channel.purge(limit=20)
+    except Exception:
+        pass
+
+    await channel.send(build_leaderboard_content())
+    return True
+
+
+@bot.event
 async def on_ready():
     print(f"{bot.user.name} is online!")
+    if not leaderboard_task.is_running():
+        leaderboard_task.start()
+    await update_leaderboard_message()
+
 
 @bot.event
 async def on_member_join(member):
@@ -177,6 +237,10 @@ async def queue(ctx):
         del server_queue[:2]
         del queue_names[:2]
 
+@tasks.loop(seconds=LEADERBOARD_REFRESH_SECONDS)
+async def leaderboard_task():
+    await update_leaderboard_message()
+
         
 @bot.command()
 async def leaderboard(ctx):
@@ -207,6 +271,12 @@ async def leaderboard(ctx):
 
     await ctx.send("\n".join(lines))
 
+@bot.command()
+async def lb_init(ctx):
+    if not leaderboard_task.is_running():
+        leaderboard_task.start()
+    await update_leaderboard_message()
+    await ctx.send("Leaderboard refreshed.")
 
 @bot.command()
 async def commands(ctx):
@@ -229,13 +299,27 @@ async def commands(ctx):
 
 @bot.command()
 async def leave(ctx):
+    if ctx.channel.id in active_matches:
+        player1_id, player2_id = active_matches[ctx.channel.id]
+        if ctx.author.id not in {player1_id, player2_id}:
+            await ctx.send("You are not a participant in this match.")
+            return
+
+        del active_matches[ctx.channel.id]
+        await ctx.send(f"{ctx.author.mention} decided this wasnt worth their time. now go be loud somewhere else, i have math to do.")
+        await asyncio.sleep(5)
+        try:
+            await ctx.channel.delete()
+        except discord.Forbidden:
+            pass
+        return
+
     if ctx.author.id in server_queue:
         server_queue.remove(ctx.author.id)
         queue_names.remove(ctx.author.name)
-        await ctx.send(f"{ctx.author.mention} is off da list.")
+        await ctx.send(f"{ctx.author.mention} is off da scroll")
     else:
-        await ctx.send(f"{ctx.author.mention}, you aint even on da list.")
-
+        await ctx.send(f"{ctx.author.mention}, you arent even on the scroll.")
 @bot.command()
 async def report(ctx):
     print("reporting")
