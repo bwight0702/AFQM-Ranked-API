@@ -296,7 +296,7 @@ async def commands(ctx):
                    "just first come, first serve.\n"
                    "i dont get paid enough to deal with that.\n"
                    "*dev note, this bot takes jash to keep up, and developing silly things like this is hard, so if you wanna keep server up and have new features, \n\n"
-                   "message me, bwight___. my comms are open, and tips are appreciated! thanks!")
+                   "check out my ko-fi in the bot's bio. my comms are open, and tips are appreciated! thanks!*")
         
 
 @bot.command()
@@ -367,32 +367,33 @@ async def report(ctx):
             try: await next_message.delete()
             except discord.Forbidden: pass
             
-            await ctx.send(f"**{p1_name}** won? alright, its goin in da scroll")
-            
-            # Compute TrueSkill changes locally
-            team1 = [player1_rating]
-            team2 = [player2_rating]
-            new_team1, new_team2 = model.rate([team1, team2], ranks=[1, 2])
-            new_p1_rating = new_team1[0]
-            new_p2_rating = new_team2[0]
-            
-            update_player_rating(player1_id, new_p1_rating.mu, new_p1_rating.sigma)
-            update_player_rating(player2_id, new_p2_rating.mu, new_p2_rating.sigma)
+            await ctx.send(f"**{p1_name}** won? is that right, **{p2_name}**?")
+            if p1_name.lower() in next_message.content.lower() and next_message.author != bot.user:
+                await ctx.send(f"**{p1_name}** really won, then. its in the scroll.")
+                # Compute TrueSkill changes locally
+                team1 = [player1_rating]
+                team2 = [player2_rating]
+                new_team1, new_team2 = model.rate([team1, team2], ranks=[1, 2])
+                new_p1_rating = new_team1[0]
+                new_p2_rating = new_team2[0]
+                
+                update_player_rating(player1_id, new_p1_rating.mu, new_p1_rating.sigma)
+                update_player_rating(player2_id, new_p2_rating.mu, new_p2_rating.sigma)
 
-            p1_change = new_p1_rating.mu - player1_rating.mu
-            p2_change = new_p2_rating.mu - player2_rating.mu
+                p1_change = new_p1_rating.mu - player1_rating.mu
+                p2_change = new_p2_rating.mu - player2_rating.mu
             
-            await ctx.send(
-                f"**here's what im readin.**\n"
-                f" winnin: <@{player1_id}> | ya new ratin: {new_p1_rating.mu:.2f} (+{p1_change:.2f})\n"
-                f" losin: <@{player2_id}> | ya new ratin: {new_p2_rating.mu:.2f} ({p2_change:.2f})\n\n"
-                f"*now get outta here. shoo, shoo!*"
-            )
+                await ctx.send(
+                    f"**here's what im readin.**\n"
+                    f" winnin: <@{player1_id}> | ya new ratin: {new_p1_rating.mu:.2f} (+{p1_change:.2f})\n"
+                    f" losin: <@{player2_id}> | ya new ratin: {new_p2_rating.mu:.2f} ({p2_change:.2f})\n\n"
+                    f"*now get outta here. shoo, shoo!*"
+                )
             
-            del active_matches[ctx.channel.id]
-            checked = True
-            await asyncio.sleep(10)
-            await ctx.channel.delete()
+                del active_matches[ctx.channel.id]
+                checked = True
+                await asyncio.sleep(10)
+                await ctx.channel.delete()
 
         # Case B: Player 2 Won
         elif p2_name.lower() in next_message.content.lower():
@@ -400,32 +401,33 @@ async def report(ctx):
             try: await next_message.delete()
             except discord.Forbidden: pass
             
-            await ctx.send(f"**{p2_name}** won? alright, its goin in the scroll")
+            await ctx.send(f"**{p2_name}** won? is that true, **{p1_name}**")
+            if p1_name.lower() in next_message.content.lower() and next_message.author != bot.user:
+                await ctx.send(f"**{p2_name}** really won, then. its in the scroll.")
+                # Compute TrueSkill changes locally
+                team1 = [player1_rating]
+                team2 = [player2_rating]
+                new_team1, new_team2 = model.rate([team1, team2], ranks=[2, 1])
+                new_p1_rating = new_team1[0]
+                new_p2_rating = new_team2[0]
             
-            # Compute TrueSkill changes locally
-            team1 = [player1_rating]
-            team2 = [player2_rating]
-            new_team1, new_team2 = model.rate([team1, team2], ranks=[2, 1])
-            new_p1_rating = new_team1[0]
-            new_p2_rating = new_team2[0]
-            
-            update_player_rating(player1_id, new_p1_rating.mu, new_p1_rating.sigma)
-            update_player_rating(player2_id, new_p2_rating.mu, new_p2_rating.sigma)
+                update_player_rating(player1_id, new_p1_rating.mu, new_p1_rating.sigma)
+                update_player_rating(player2_id, new_p2_rating.mu, new_p2_rating.sigma)
 
-            p1_change = new_p1_rating.mu - player1_rating.mu
-            p2_change = new_p2_rating.mu - player2_rating.mu
+                p1_change = new_p1_rating.mu - player1_rating.mu
+                p2_change = new_p2_rating.mu - player2_rating.mu
             
-            await ctx.send(
-                f"**alrighty, here's what ive got**\n"
-                f" winnin: <@{player2_id}> | ya new number: {new_p2_rating.mu:.2f} (+{p2_change:.2f})\n"
-                f" losin: <@{player1_id}> | ya new number: {new_p1_rating.mu:.2f} ({p1_change:.2f})\n\n"
-                f"*now get outta here. shoo, shoo!*"
-            )
+                await ctx.send(
+                    f"**alrighty, here's what ive got**\n"
+                    f" winnin: <@{player2_id}> | ya new number: {new_p2_rating.mu:.2f} (+{p2_change:.2f})\n"
+                    f" losin: <@{player1_id}> | ya new number: {new_p1_rating.mu:.2f} ({p1_change:.2f})\n\n"
+                    f"*now get outta here. shoo, shoo!*"
+                )
             
-            del active_matches[ctx.channel.id]
-            checked = True
-            await asyncio.sleep(10)
-            await ctx.channel.delete()
+                del active_matches[ctx.channel.id]
+                checked = True
+                await asyncio.sleep(10)
+                await ctx.channel.delete()
             
         else:
             await ctx.send("huh? i dont got a clue what youre talkin about. speak up.")
