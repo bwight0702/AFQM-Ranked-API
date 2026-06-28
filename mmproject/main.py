@@ -116,12 +116,14 @@ async def queue(ctx):
                 
         p1mu = p1_data["mu"]
         p2mu = p2_data["mu"]
-        # ----------------------------
 
-        # 4. Gather the member objects from Discord for permission assignment
+        p1_discord_id = int(player1_id)
+        p2_discord_id = int(player2_id)
+
         guild = ctx.guild
-        p1_member = guild.get_member(player1_id) or await guild.fetch_member(player1_id)
-        p2_member = guild.get_member(player2_id) or await guild.fetch_member(player2_id)
+        # Use the new integer variables here so get_member works perfectly
+        p1_member = guild.get_member(p1_id) or await guild.fetch_member(p1_discord_id)
+        p2_member = guild.get_member(p2_id) or await guild.fetch_member(p2_discord_id)
         
         # Setup private channel text visibility overwrites
         staff_role = discord.utils.get(guild.roles, name="Staff") 
