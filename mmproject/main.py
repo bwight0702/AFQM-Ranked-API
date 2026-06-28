@@ -1,14 +1,13 @@
 from discord import message
-import aiohttp
 from openskill.models import PlackettLuce
 import asyncio
 import discord
 from discord.ext import commands
+import json
 import logging
+from pathlib import Path
 from dotenv import load_dotenv
 import os
-
-API_URL = "https://fastapi-production-6ed6.up.railway.app" 
 
 model = PlackettLuce()
 load_dotenv()
@@ -27,6 +26,42 @@ secret_role = "Matchmaking"
 server_queue = []
 active_matches = {}
 queue_names = []
+
+RATINGS_FILE = Path("ratings.json")
+DEFAULT_MU = 25.0
+DEFAULT_SIGMA = 8.333
+
+
+def load_player_ratings():
+    if RATINGS_FILE.exists():
+        try:
+            with RATINGS_FILE.open("r", encoding="utf-8") as handle:
+                return {str(k): value for k, value in json.load(handle).items()}
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+    return {}
+
+
+def save_player_ratings():
+    with RATINGS_FILE.open("w", encoding="utf-8") as handle:
+        json.dump({str(k): value for k, value in player_ratings.items()}, handle, indent=2)
+
+
+def get_player_rating(player_id):
+    player_id = str(player_id)
+    if player_id not in player_ratings:
+        player_ratings[player_id] = {"mu": DEFAULT_MU, "sigma": DEFAULT_SIGMA}
+        save_player_ratings()
+    return player_ratings[player_id]
+
+
+def update_player_rating(player_id, mu, sigma):
+    player_id = str(player_id)
+    player_ratings[player_id] = {"mu": mu, "sigma": sigma}
+    save_player_ratings()
+
+
+player_ratings = load_player_ratings()
 
 
 @bot.event 
@@ -100,83 +135,35 @@ async def queue(ctx):
         player1_name = queue_names[0]
         player2_name = queue_names[1]
         
-        # --- FASTAPI FETCH LOGIC ---
-        # Instead of looking up a local dictionary, we query your FastAPI endpoint
-        # If the player is brand new, the API automatically generates their baseline 25.0 rating row
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"{API_URL}/players/{str(player1_id)}") as r1, \
-                       session.get(f"{API_URL}/players/{str(player2_id)}") as r2:
-                
-                if r1.status != 200 or r2.status != 200:
-                    await ctx.send("❌ Error connecting to the ratings database server. Match canceled.")
-                    return
-                
-                p1_data = await r1.json()
-                p2_data = await r2.json()
-                
-                p1mu = p1_data["mu"]
+        p1_data = get_player_rating(player1_id)
+        p2_data = get_player_rating(player2_id)
+        
+        p1mu = p1_data["mu"]
         p2mu = p2_data["mu"]
-        print("[Log] API data fetched successfully. Starting Discord member lookup...")
 
-        # --- FIX 1: ENSURE TYPE SAFETY & ROBUST LOOKUP ---
+        # 4. Gather the member objects from Discord for permission assignment
         guild = ctx.guild
-        p1_discord_id = int(player1_id)
-        p2_discord_id = int(player2_id)
-
-        # First, try to read from local cache (fastest, never stalls)
-        p1_member = guild.get_member(p1_discord_id)
-        p2_member = guild.get_member(p2_discord_id)
-
-        # Fallback to fetch only if cache fails, wrapped in a fast try/except block
-        try:
-            if not p1_member:
-                print(f"[Log] Fetching member {p1_discord_id} from Discord API...")
-                p1_member = await guild.fetch_member(p1_discord_id)
-            if not p2_member:
-                print(f"[Log] Fetching member {p2_discord_id} from Discord API...")
-                p2_member = await guild.fetch_member(p2_discord_id)
-        except Exception as e:
-            print(f"[Critical Error] Failed to fetch member from Discord: {e}")
-            await ctx.send("❌ Error fetching player profiles from Discord. Matchroom setup aborted.")
-            return
-
-        print(f"[Log] Members found: {p1_member.name if p1_member else 'None'} & {p2_member.name if p2_member else 'None'}")
-
-        # --- FIX 2: FALLBACK PERMISSION GENERATION ---
-        # If Discord STILL returns None for a member, using them in overwrites crashes the channel creation
-        if not p1_member or not p2_member:
-            print("[Critical Error] One or both members returned None. Cannot build channel permissions.")
-            await ctx.send("❌ Could not verify players in this server. Matchroom setup aborted.")
-            return
-
-        print("[Log] Creating channel permission dictionary...")
+        p1_member = guild.get_member(player1_id) or await guild.fetch_member(player1_id)
+        p2_member = guild.get_member(player2_id) or await guild.fetch_member(player2_id)
+        
+        # Setup private channel text visibility overwrites
         staff_role = discord.utils.get(guild.roles, name="Staff") 
         overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            p1_member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-            p2_member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            guild.default_role: discord.PermissionOverwrite(read_messages=False), # Hide from everyone
+            p1_member: discord.PermissionOverwrite(read_messages=True, send_messages=True), # Allow player 1
+            p2_member: discord.PermissionOverwrite(read_messages=True, send_messages=True), # Allow player 2
         }
         if staff_role:
             overwrites[staff_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
 
-        # --- FIX 3: CREATE THE CHANNEL ---
-        print("[Log] Sending text channel creation request to Discord...")
-        try:
-            channel_name = f"match-{player1_name}-vs-{player2_name}"
-            match_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
-            print(f"[Log] Channel '{channel_name}' created successfully with ID: {match_channel.id}")
-        except discord.Forbidden:
-            print("[Critical Error] Discord explicitly denied channel creation. Check 'Manage Channels' AND role hierarchy!")
-            await ctx.send("❌ Bot lacks permissions to create channels in this category.")
-            return
-        except Exception as e:
-            print(f"[Critical Error] Generic failure creating text channel: {e}")
-            await ctx.send("❌ Failed to create match channel due to an internal error.")
-            return
+        # 5. Spin up the private text room
+        channel_name = f"match-{player1_name}-vs-{player2_name}"
+        match_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
         
-        # Track the active room
+        # Track that this live room belongs to these two specific player IDs
         active_matches[match_channel.id] = (player1_id, player2_id)
         
+        # Send details directly into the newly generated room
         await match_channel.send(
             f" Welcome {p1_member.mention} and {p2_member.mention} to your private match channel!\n"
             f"**Current Ratings:**\n"
@@ -185,10 +172,10 @@ async def queue(ctx):
             f"Use `!report` in this room once your match finishes."
         )
         
-        # Queue cleanup
+        # 6. QUEUE CLEANUP
+        # Delete only the 2 matched individuals from the front of the queue
         del server_queue[:2]
         del queue_names[:2]
-        print("[Log] Queue cleared. Matchmaking cycle completed successfully.")
 
         
         
@@ -219,18 +206,8 @@ async def report(ctx):
     # 2. Extract the exact player IDs assigned to this channel
     player1_id, player2_id = active_matches[ctx.channel.id]
         
-    # 3. FASTAPI FETCH: Read current user scores from the API
-    async with aiohttp.ClientSession() as session:
-        # Wrap player1_id and player2_id in str()
-        async with session.get(f"{API_URL}/players/{str(player1_id)}") as r1, \
-                   session.get(f"{API_URL}/players/{str(player2_id)}") as r2:
-            
-            if r1.status != 200 or r2.status != 200:
-                await ctx.send("❌ Error fetching active player data from the online server.")
-                return
-            
-            p1_data = await r1.json()
-            p2_data = await r2.json()
+    p1_data = get_player_rating(player1_id)
+    p2_data = get_player_rating(player2_id)
 
     # 4. Turn the data into local TrueSkill rating structures
     player1_rating = model.rating(mu=p1_data["mu"], sigma=p1_data["sigma"])
@@ -269,13 +246,8 @@ async def report(ctx):
             new_p1_rating = new_team1[0]
             new_p2_rating = new_team2[0]
             
-            # 6. FASTAPI UPDATE: Structure payloads as JSON to match your API models
-            p1_payload = {"mu": new_p1_rating.mu, "sigma": new_p1_rating.sigma}
-            p2_payload = {"mu": new_p2_rating.mu, "sigma": new_p2_rating.sigma}
-            
-            async with aiohttp.ClientSession() as session:
-                await session.put(f"{API_URL}/players/{str(player1_id)}", json=p1_payload)
-                await session.put(f"{API_URL}/players/{str(player2_id)}", json=p2_payload)
+            update_player_rating(player1_id, new_p1_rating.mu, new_p1_rating.sigma)
+            update_player_rating(player2_id, new_p2_rating.mu, new_p2_rating.sigma)
 
             p1_change = new_p1_rating.mu - player1_rating.mu
             p2_change = new_p2_rating.mu - player2_rating.mu
@@ -307,13 +279,8 @@ async def report(ctx):
             new_p1_rating = new_team1[0]
             new_p2_rating = new_team2[0]
             
-            # FASTAPI UPDATE: Structure payloads as JSON
-            p1_payload = {"mu": new_p1_rating.mu, "sigma": new_p1_rating.sigma}
-            p2_payload = {"mu": new_p2_rating.mu, "sigma": new_p2_rating.sigma}
-            
-            async with aiohttp.ClientSession() as session:
-                await session.put(f"{API_URL}/players/{str(player1_id)}", json=p1_payload)
-                await session.put(f"{API_URL}/players/{str(player2_id)}", json=p2_payload)
+            update_player_rating(player1_id, new_p1_rating.mu, new_p1_rating.sigma)
+            update_player_rating(player2_id, new_p2_rating.mu, new_p2_rating.sigma)
 
             p1_change = new_p1_rating.mu - player1_rating.mu
             p2_change = new_p2_rating.mu - player2_rating.mu
