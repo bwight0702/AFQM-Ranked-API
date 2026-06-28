@@ -302,6 +302,6 @@ async def report(ctx):
 
 
 
-bot.run(token, log_handler=handler, log_level=logging.DEBUG)
+bot.run(DISCORD_TOKEN, log_handler=handler, log_level=logging.DEBUG)
 
 client = discord.Client(intents=intents)
