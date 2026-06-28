@@ -294,6 +294,12 @@ async def on_ready():
         leaderboard_task.start()
 
 @bot.command()
+async def lb_init(ctx):
+    if ctx.channel.name = "leaderboard":
+        if not leaderboard_task.is_running():
+            leaderboard_task.start()
+
+@bot.command()
 async def leave(ctx):
 
     if ctx.channel.id in active_matches:
