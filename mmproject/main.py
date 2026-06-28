@@ -295,12 +295,28 @@ async def on_ready():
 
 @bot.command()
 async def leave(ctx):
+
+    if ctx.channel.id in active_matches:
+        player1_id, player2_id = active_matches[ctx.channel.id]
+        if ctx.author.id not in {player1_id, player2_id}:
+            await ctx.send("you aint even a part of this.")
+            return
+
+        del active_matches[ctx.channel.id]
+        await ctx.send(f"{ctx.author.mention} decided this aint worth their time. now scram, both of you.")
+        await asyncio.sleep(5)
+        try:
+            await ctx.channel.delete()
+        except discord.Forbidden:
+            pass
+        return
+    
     if ctx.author.id in server_queue:
         server_queue.remove(ctx.author.id)
         queue_names.remove(ctx.author.name)
-        await ctx.send(f"{ctx.author.mention} has left the queue.")
+        await ctx.send(f"{ctx.author.mention} is outta da scroll")
     else:
-        await ctx.send(f"{ctx.author.mention} isnt even in the queue.")
+        await ctx.send(f"{ctx.author.mention} isnt even in the scroll.")
 
 @bot.command()
 async def report(ctx):
