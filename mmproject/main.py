@@ -3,7 +3,7 @@ import aiohttp
 from openskill.models import PlackettLuce
 import asyncio
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import logging
 from dotenv import load_dotenv
 import os
@@ -213,35 +213,7 @@ async def commands(ctx):
                    "balls.")
                    
         
-@bot.command()
-async def leaderboard(ctx):
-    if ctx.guild is None:
-        await ctx.send("ya gotta be in a server dummy")
-        return
-
-    rankings = []
-    for player_id, data in player_ratings.items():
-        try:
-            member = ctx.guild.get_member(int(player_id)) or await ctx.guild.fetch_member(int(player_id))
-            name = member.display_name
-        except (ValueError, discord.HTTPException, discord.NotFound):
-            name = f"User {player_id}"
-
-        mu = data.get("mu", DEFAULT_MU)
-        rankings.append((mu, name))
-
-    top_players = sorted(rankings, key=lambda x: x[0], reverse=True)[:10]
-
-    if not top_players:
-        await ctx.send("No ranked players yet.")
-        return
-
-    lines = ["**top 10 scroll people**"]
-    for index, (mu, name) in enumerate(top_players, start=1):
-        lines.append(f"{index}. **{name}** — mu: {mu:.2f}")
-
-    await ctx.send("\n".join(lines))
-        
+     
 @tasks.loop(seconds=5.0)
 async def leaderboard_task():
     # Replace with your target channel ID
@@ -287,6 +259,35 @@ async def leaderboard_task():
 
         await channel.send("\n".join(lines))
 
+@bot.command()
+async def leaderboard(ctx):
+    if ctx.guild is None:
+        await ctx.send("ya gotta be in a server dummy")
+        return
+
+    rankings = []
+    for player_id, data in player_ratings.items():
+        try:
+            member = ctx.guild.get_member(int(player_id)) or await ctx.guild.fetch_member(int(player_id))
+            name = member.display_name
+        except (ValueError, discord.HTTPException, discord.NotFound):
+            name = f"User {player_id}"
+
+        mu = data.get("mu", DEFAULT_MU)
+        rankings.append((mu, name))
+
+    top_players = sorted(rankings, key=lambda x: x[0], reverse=True)[:10]
+
+    if not top_players:
+        await ctx.send("No ranked players yet.")
+        return
+
+    lines = ["**top 10 scroll people**"]
+    for index, (mu, name) in enumerate(top_players, start=1):
+        lines.append(f"{index}. **{name}** — mu: {mu:.2f}")
+
+    await ctx.send("\n".join(lines))
+   
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
