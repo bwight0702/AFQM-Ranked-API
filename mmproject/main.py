@@ -49,14 +49,14 @@ async def on_message(message):
 
 @bot.command()
 async def ping(ctx):
-    await ctx.send(f"hello {ctx.author.mention}!")
+    await ctx.send(f"sup {ctx.author.mention}!")
 
 @bot.command()
 async def assign(ctx):
     role = discord.utils.get(ctx.guild.roles, name=secret_role)
     if role:
         await ctx.author.add_roles(role)
-        await ctx.send(f"Matchmaking Role assigned to {ctx.author.mention}")
+        await ctx.send(f"ill write ya down, {ctx.author.mention}")
     else:
         await ctx.send(f"Role not found, Sorry!")
 
@@ -64,7 +64,7 @@ async def assign(ctx):
 @commands.has_role(secret_role)
 async def matchmaking(ctx):
     role = discord.utils.get(ctx.guild.roles, name=secret_role)
-    await ctx.send(f"{role.mention}, {ctx.author.mention} is looking for a game!")
+    await ctx.send(f"{role.mention}, {ctx.author.mention} is looking for a match.")
 
 @bot.command()    
 async def queue(ctx):
@@ -75,7 +75,7 @@ async def queue(ctx):
         except discord.Forbidden:
             pass
 
-        error_msg = await ctx.send(f"{ctx.author.mention} ❌ You can only use this command in the **#queue** channel!")
+        error_msg = await ctx.send(f"{ctx.author.mention} ayo get back in #queue , ya dummy")
         await asyncio.sleep(5)
         await error_msg.delete()
         return
@@ -84,15 +84,15 @@ async def queue(ctx):
     if ctx.author.id not in server_queue:
         queue_names.append(ctx.author.name)
         server_queue.append(ctx.author.id)
-        await ctx.send(f"{ctx.author.mention} added to the queue! there are **#{len(server_queue)}** people in the queue.")
+        await ctx.send(f"{ctx.author.mention} added to the queue. there are **#{len(server_queue)}** people in the queue.")
     else:
         server_queue.remove(ctx.author.id)
         queue_names.remove(ctx.author.name)
-        await ctx.send(f"{ctx.author.mention} removed from the queue! there are **#{len(server_queue)}** people in the queue.")
+        await ctx.send(f"{ctx.author.mention} removed from the queue. there are **#{len(server_queue)}** people in the queue.")
         
     # 3. Matchmaking trigger (when 2 or more players are waiting)
     if len(server_queue) >= 2:
-        await ctx.send(f"**{len(server_queue)}** players are in the queue! Creating your match room...")
+        await ctx.send(f"**{len(server_queue)}** guys are here. lemme get you a room")
         
         # Pull the first two oldest player IDs out of the queue
         player1_id = server_queue[0]
@@ -178,11 +178,11 @@ async def queue(ctx):
         active_matches[match_channel.id] = (player1_id, player2_id)
         
         await match_channel.send(
-            f" Welcome {p1_member.mention} and {p2_member.mention} to your private match channel!\n"
-            f"**Current Ratings:**\n"
-            f"👤 {player1_name}: `{p1mu:.2f}`\n"
-            f"👤 {player2_name}: `{p2mu:.2f}`\n\n"
-            f"Use `!report` in this room once your match finishes."
+            f" welcome {p1_member.mention} and {p2_member.mention} to your personal grudgematch.\n"
+            f"**ya numbers right now:**\n"
+            f" {player1_name}: `{p1mu:.2f}`\n"
+            f" {player2_name}: `{p2mu:.2f}`\n\n"
+            f"use !report to get my attention when you two are done dukin it out."
         )
         
         # Queue cleanup
@@ -190,9 +190,57 @@ async def queue(ctx):
         del queue_names[:2]
         print("[Log] Queue cleared. Matchmaking cycle completed successfully.")
 
+@bot.command()
+async def help(ctx):
+    await ctx.send("welcome to help!!!/n"
+                   "!ping pings you (duh)/n"
+                   "!queue adds you to the queue. do it again to leave./n"
+                   "!assign gives you the matchmaking role, and !matchmaking pings it./n"
+                   "dont spam./n"
+                   "when someone else is in queue, youll get a custom channel!/n"
+                   "wooh/n"
+                   "then, use !report to report the results of the game/n"
+                   "use the winning players discord *username*, not display name./n"
+                   "discord dosent like giving those out./n"
+                   "games are bo3, random stage./n /n"
+                   "!leaderboard shows you the top 10 players./n"
+                   "if youre not there, too bad./n"
+                   "im paying to run the server for this bot, so i def dont/n"
+                   "get paid enough to make that rn./n"
+                   "to support the dev, and keep the server up, message bwight___ !/n"
+                   "my comms are open and tips are appreciated!/n"
+                   "also, /n"
+                   "balls.")
+                   
         
-        
+@bot.command()
+async def leaderboard(ctx):
+    if ctx.guild is None:
+        await ctx.send("ya gotta be in a server dummy")
+        return
 
+    rankings = []
+    for player_id, data in player_ratings.items():
+        try:
+            member = ctx.guild.get_member(int(player_id)) or await ctx.guild.fetch_member(int(player_id))
+            name = member.display_name
+        except (ValueError, discord.HTTPException, discord.NotFound):
+            name = f"User {player_id}"
+
+        mu = data.get("mu", DEFAULT_MU)
+        rankings.append((mu, name))
+
+    top_players = sorted(rankings, key=lambda x: x[0], reverse=True)[:10]
+
+    if not top_players:
+        await ctx.send("No ranked players yet.")
+        return
+
+    lines = ["**top 10 scroll people**"]
+    for index, (mu, name) in enumerate(top_players, start=1):
+        lines.append(f"{index}. **{name}** — mu: {mu:.2f}")
+
+    await ctx.send("\n".join(lines))
         
         
 
@@ -203,7 +251,7 @@ async def leave(ctx):
         queue_names.remove(ctx.author.name)
         await ctx.send(f"{ctx.author.mention} has left the queue.")
     else:
-        await ctx.send(f"{ctx.author.mention}, you are not in the queue.")
+        await ctx.send(f"{ctx.author.mention} isnt even in the queue.")
 
 @bot.command()
 async def report(ctx):
@@ -213,7 +261,7 @@ async def report(ctx):
 
     # 1. SECURITY & ROOM CHECK
     if ctx.channel.id not in active_matches:
-        await ctx.send("❌ This is not a recognized match channel. You can only report match results inside your private match room!")
+        await ctx.send("get in your match room dummy")
         return
     
     # 2. Extract the exact player IDs assigned to this channel
@@ -243,7 +291,7 @@ async def report(ctx):
     p1_name = p1_member.name
     p2_name = p2_member.name
 
-    await ctx.send(f"{ctx.author.mention}, please report the winner of the match by typing their name in the chat.")
+    await ctx.send(f"{ctx.author.mention}, say da winner's name so i can write it down")
     
     try:
         next_message = await bot.wait_for('message', timeout=15.0)
@@ -281,10 +329,10 @@ async def report(ctx):
             p2_change = new_p2_rating.mu - player2_rating.mu
             
             await ctx.send(
-                f"**Match Results Updated!**\n"
-                f" Winner: <@{player1_id}> | New Rating: {new_p1_rating.mu:.2f} (+{p1_change:.2f})\n"
-                f" Loser: <@{player2_id}> | New Rating: {new_p2_rating.mu:.2f} ({p2_change:.2f})\n\n"
-                f"*This channel will close in 10 seconds...*"
+                f"**ok i wrote it down heres what i got**\n"
+                f" winner: <@{player1_id}> | new rating: {new_p1_rating.mu:.2f} (+{p1_change:.2f})\n"
+                f" loser: <@{player2_id}> | new rating: {new_p2_rating.mu:.2f} ({p2_change:.2f})\n\n"
+                f"*now shoo*"
             )
             
             del active_matches[ctx.channel.id]
@@ -331,10 +379,10 @@ async def report(ctx):
             await ctx.channel.delete()
             
         else:
-            await ctx.send("Winner not recognized. Please type one of the player's accurate *usernames*.")
+            await ctx.send("i have no clue who youre talkin about. speak up.")
             
     except asyncio.TimeoutError:
-        await ctx.send("You took too long to respond! Run `!report` again when ready.")
+        await ctx.send("ya takin to long. get my attention again when you're ready")
 
 
 
