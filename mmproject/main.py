@@ -242,7 +242,56 @@ async def leaderboard(ctx):
 
     await ctx.send("\n".join(lines))
         
-        
+@tasks.loop(seconds=5.0)
+async def leaderboard_task():
+    # Replace with your target channel ID
+    channel = bot.get_channel(1520844698007113849) 
+    if channel:
+        # Purge all existing messages in the channel, then post an updated leaderboard
+        try:
+            await channel.purge(limit=None)
+        except Exception:
+            # Fallback: delete messages one-by-one if bulk purge fails
+            try:
+                async for msg in channel.history(limit=None):
+                    try:
+                        await msg.delete()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        rankings = []
+        for player_id, data in player_ratings.items():
+            try:
+                member = await bot.fetch_user(int(player_id))
+                name = member.display_name
+            except (ValueError, discord.HTTPException, discord.NotFound):
+                name = f"User {player_id}"
+
+            mu = data.get("mu", DEFAULT_MU)
+            rankings.append((mu, name))
+
+        top_players = sorted(rankings, key=lambda x: x[0], reverse=True)[:10]
+
+        # timestamp and send
+        ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+
+        if not top_players:
+            await channel.send(f"Leaderboard last updated: {ts}\nNo ranked players yet.")
+            return
+
+        lines = [f"Leaderboard last updated: {ts}", "", "**Top 10 Ranked Players**"]
+        for index, (mu, name) in enumerate(top_players, start=1):
+            lines.append(f"{index}. **{name}** — MU: {mu:.2f}")
+
+        await channel.send("\n".join(lines))
+
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}")
+    if not leaderboard_task.is_running():
+        leaderboard_task.start()
 
 @bot.command()
 async def leave(ctx):
