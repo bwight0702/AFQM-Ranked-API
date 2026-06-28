@@ -367,8 +367,8 @@ async def report(ctx):
             try: await next_message.delete()
             except discord.Forbidden: pass
             
-            await ctx.send(f"**{p1_name}** won? is that right, **{p2_name}**?")
-            if p1_name.lower() in next_message.content.lower() and next_message.author != bot.user:
+            await ctx.send(f"**{p1_name}** won? who do you think won, **{p2_name}**?")
+            if p1_name.lower() in next_message.content.lower() and next_message.author == player2_id:
                 await ctx.send(f"**{p1_name}** really won, then. its in the scroll.")
                 # Compute TrueSkill changes locally
                 team1 = [player1_rating]
@@ -401,8 +401,8 @@ async def report(ctx):
             try: await next_message.delete()
             except discord.Forbidden: pass
             
-            await ctx.send(f"**{p2_name}** won? is that true, **{p1_name}**")
-            if p1_name.lower() in next_message.content.lower() and next_message.author != bot.user:
+            await ctx.send(f"**{p2_name}** won? who do you think won, **{p1_name}**?")
+            if p2_name.lower() in next_message.content.lower() and next_message.author == player1_id:
                 await ctx.send(f"**{p2_name}** really won, then. its in the scroll.")
                 # Compute TrueSkill changes locally
                 team1 = [player1_rating]
