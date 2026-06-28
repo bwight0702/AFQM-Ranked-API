@@ -2,7 +2,7 @@ from discord import message
 from openskill.models import PlackettLuce
 import asyncio
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import json
 import logging
 from pathlib import Path
