@@ -357,10 +357,6 @@ async def report(ctx):
         if checked:
             return
 
-        if next_message.author == bot.user:
-            checked = False
-            return
-
         # Determine which player was named as the winner in the initial reply
         if p1_name.lower() in next_message.content.lower():
             winner_id, loser_id = player1_id, player2_id
