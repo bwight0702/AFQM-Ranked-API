@@ -2,12 +2,14 @@ from discord import message
 from openskill.models import PlackettLuce
 import asyncio
 import discord
+import datetime
 from discord.ext import commands, tasks
 import json
 import logging
 from pathlib import Path
 from dotenv import load_dotenv
 import os
+from datetime import datetime
 
 model = PlackettLuce()
 load_dotenv()
