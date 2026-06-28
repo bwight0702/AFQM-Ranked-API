@@ -33,7 +33,7 @@ DEFAULT_SIGMA = 8.333
 LEADERBOARD_CHANNEL_ID = int(os.getenv("LEADERBOARD_CHANNEL_ID", "1520844698007113849"))
 LEADERBOARD_REFRESH_SECONDS = int(os.getenv("LEADERBOARD_REFRESH_SECONDS", "15"))
 LEADERBOARD_LIMIT = int(os.getenv("LEADERBOARD_LIMIT", "10"))
-BOT_TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("TOKEN")
+token = os.getenv("DISCORD_TOKEN") or os.getenv("TOKEN")
 
 
 def load_player_ratings():
