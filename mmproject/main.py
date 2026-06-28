@@ -114,35 +114,69 @@ async def queue(ctx):
                 p1_data = await r1.json()
                 p2_data = await r2.json()
                 
-        p1mu = p1_data["mu"]
+                p1mu = p1_data["mu"]
         p2mu = p2_data["mu"]
+        print("[Log] API data fetched successfully. Starting Discord member lookup...")
 
+        # --- FIX 1: ENSURE TYPE SAFETY & ROBUST LOOKUP ---
+        guild = ctx.guild
         p1_discord_id = int(player1_id)
         p2_discord_id = int(player2_id)
 
-        guild = ctx.guild
-        # Use the new integer variables here so get_member works perfectly
-        p1_member = guild.get_member(p1_id) or await guild.fetch_member(p1_discord_id)
-        p2_member = guild.get_member(p2_id) or await guild.fetch_member(p2_discord_id)
-        
-        # Setup private channel text visibility overwrites
+        # First, try to read from local cache (fastest, never stalls)
+        p1_member = guild.get_member(p1_discord_id)
+        p2_member = guild.get_member(p2_discord_id)
+
+        # Fallback to fetch only if cache fails, wrapped in a fast try/except block
+        try:
+            if not p1_member:
+                print(f"[Log] Fetching member {p1_discord_id} from Discord API...")
+                p1_member = await guild.fetch_member(p1_discord_id)
+            if not p2_member:
+                print(f"[Log] Fetching member {p2_discord_id} from Discord API...")
+                p2_member = await guild.fetch_member(p2_discord_id)
+        except Exception as e:
+            print(f"[Critical Error] Failed to fetch member from Discord: {e}")
+            await ctx.send("❌ Error fetching player profiles from Discord. Matchroom setup aborted.")
+            return
+
+        print(f"[Log] Members found: {p1_member.name if p1_member else 'None'} & {p2_member.name if p2_member else 'None'}")
+
+        # --- FIX 2: FALLBACK PERMISSION GENERATION ---
+        # If Discord STILL returns None for a member, using them in overwrites crashes the channel creation
+        if not p1_member or not p2_member:
+            print("[Critical Error] One or both members returned None. Cannot build channel permissions.")
+            await ctx.send("❌ Could not verify players in this server. Matchroom setup aborted.")
+            return
+
+        print("[Log] Creating channel permission dictionary...")
         staff_role = discord.utils.get(guild.roles, name="Staff") 
         overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False), # Hide from everyone
-            p1_member: discord.PermissionOverwrite(read_messages=True, send_messages=True), # Allow player 1
-            p2_member: discord.PermissionOverwrite(read_messages=True, send_messages=True), # Allow player 2
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            p1_member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            p2_member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
         }
         if staff_role:
             overwrites[staff_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
 
-        # 5. Spin up the private text room
-        channel_name = f"match-{player1_name}-vs-{player2_name}"
-        match_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
+        # --- FIX 3: CREATE THE CHANNEL ---
+        print("[Log] Sending text channel creation request to Discord...")
+        try:
+            channel_name = f"match-{player1_name}-vs-{player2_name}"
+            match_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
+            print(f"[Log] Channel '{channel_name}' created successfully with ID: {match_channel.id}")
+        except discord.Forbidden:
+            print("[Critical Error] Discord explicitly denied channel creation. Check 'Manage Channels' AND role hierarchy!")
+            await ctx.send("❌ Bot lacks permissions to create channels in this category.")
+            return
+        except Exception as e:
+            print(f"[Critical Error] Generic failure creating text channel: {e}")
+            await ctx.send("❌ Failed to create match channel due to an internal error.")
+            return
         
-        # Track that this live room belongs to these two specific player IDs
+        # Track the active room
         active_matches[match_channel.id] = (player1_id, player2_id)
         
-        # Send details directly into the newly generated room
         await match_channel.send(
             f" Welcome {p1_member.mention} and {p2_member.mention} to your private match channel!\n"
             f"**Current Ratings:**\n"
@@ -151,10 +185,10 @@ async def queue(ctx):
             f"Use `!report` in this room once your match finishes."
         )
         
-        # 6. QUEUE CLEANUP
-        # Delete only the 2 matched individuals from the front of the queue
+        # Queue cleanup
         del server_queue[:2]
         del queue_names[:2]
+        print("[Log] Queue cleared. Matchmaking cycle completed successfully.")
 
         
         
