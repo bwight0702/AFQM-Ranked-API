@@ -191,7 +191,7 @@ async def queue(ctx):
         print("[Log] Queue cleared. Matchmaking cycle completed successfully.")
 
 @bot.command()
-async def help(ctx):
+async def commands(ctx):
     await ctx.send("welcome to help!!!/n"
                    "!ping pings you (duh)/n"
                    "!queue adds you to the queue. do it again to leave./n"
