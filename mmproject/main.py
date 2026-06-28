@@ -361,77 +361,81 @@ async def report(ctx):
             checked = False
             return
 
-        # Case A: Player 1 Won
+        # Determine which player was named as the winner in the initial reply
         if p1_name.lower() in next_message.content.lower():
-            print("p1 won")
-            try: await next_message.delete()
-            except discord.Forbidden: pass
-            
-            await ctx.send(f"**{p1_name}** won? who do you think won, **{p2_name}**?")
-            if p1_name.lower() in next_message.content.lower() and next_message.author == player2_id:
-                await ctx.send(f"**{p1_name}** really won, then. its in the scroll.")
-                # Compute TrueSkill changes locally
-                team1 = [player1_rating]
-                team2 = [player2_rating]
-                new_team1, new_team2 = model.rate([team1, team2], ranks=[1, 2])
-                new_p1_rating = new_team1[0]
-                new_p2_rating = new_team2[0]
-                
-                update_player_rating(player1_id, new_p1_rating.mu, new_p1_rating.sigma)
-                update_player_rating(player2_id, new_p2_rating.mu, new_p2_rating.sigma)
+            winner_id, loser_id = player1_id, player2_id
+            winner_name, loser_name = p1_name, p2_name
+            winner_rating_first, ranks = True, [1, 2]
+        elif p2_name.lower() in next_message.content.lower():
+            winner_id, loser_id = player2_id, player1_id
+            winner_name, loser_name = p2_name, p1_name
+            winner_rating_first, ranks = False, [2, 1]
+        else:
+            await ctx.send("huh? i dont got a clue what youre talkin about. speak up.")
+            return
 
-                p1_change = new_p1_rating.mu - player1_rating.mu
-                p2_change = new_p2_rating.mu - player2_rating.mu
-            
+        # Remove the initial reporter's message if possible
+        try:
+            await next_message.delete()
+        except discord.Forbidden:
+            pass
+
+        # Ask the loser to confirm by saying the winner's name
+        loser_mention = f"<@{loser_id}>"
+        await ctx.send(f"**{winner_name}** won? who do you think won, {loser_mention}?")
+
+        # Wait for a confirmation message specifically from the loser in this channel
+        def confirm_check(m):
+            return m.channel == ctx.channel and m.author.id == loser_id
+
+        try:
+            confirm_msg = await bot.wait_for('message', timeout=15.0, check=confirm_check)
+        except asyncio.TimeoutError:
+            await ctx.send("No confirmation from the other player. use !report again when you're ready.")
+            return
+
+        # Verify loser repeated the winner's name
+        if winner_name.lower() in confirm_msg.content.lower():
+            await ctx.send(f"**{winner_name}** really won, then. its in the scroll.")
+
+            # Compute TrueSkill changes locally
+            team1 = [player1_rating]
+            team2 = [player2_rating]
+            new_team1, new_team2 = model.rate([team1, team2], ranks=ranks)
+            new_p1_rating = new_team1[0]
+            new_p2_rating = new_team2[0]
+
+            update_player_rating(player1_id, new_p1_rating.mu, new_p1_rating.sigma)
+            update_player_rating(player2_id, new_p2_rating.mu, new_p2_rating.sigma)
+
+            p1_change = new_p1_rating.mu - player1_rating.mu
+            p2_change = new_p2_rating.mu - player2_rating.mu
+
+            if winner_id == player1_id:
                 await ctx.send(
                     f"**here's what im readin.**\n"
                     f" winnin: <@{player1_id}> | ya new ratin: {new_p1_rating.mu:.2f} (+{p1_change:.2f})\n"
                     f" losin: <@{player2_id}> | ya new ratin: {new_p2_rating.mu:.2f} ({p2_change:.2f})\n\n"
                     f"*now get outta here. shoo, shoo!*"
                 )
-            
-                del active_matches[ctx.channel.id]
-                checked = True
-                await asyncio.sleep(10)
-                await ctx.channel.delete()
-
-        # Case B: Player 2 Won
-        elif p2_name.lower() in next_message.content.lower():
-            print("p2 won")
-            try: await next_message.delete()
-            except discord.Forbidden: pass
-            
-            await ctx.send(f"**{p2_name}** won? who do you think won, **{p1_name}**?")
-            if p2_name.lower() in next_message.content.lower() and next_message.author == player1_id:
-                await ctx.send(f"**{p2_name}** really won, then. its in the scroll.")
-                # Compute TrueSkill changes locally
-                team1 = [player1_rating]
-                team2 = [player2_rating]
-                new_team1, new_team2 = model.rate([team1, team2], ranks=[2, 1])
-                new_p1_rating = new_team1[0]
-                new_p2_rating = new_team2[0]
-            
-                update_player_rating(player1_id, new_p1_rating.mu, new_p1_rating.sigma)
-                update_player_rating(player2_id, new_p2_rating.mu, new_p2_rating.sigma)
-
-                p1_change = new_p1_rating.mu - player1_rating.mu
-                p2_change = new_p2_rating.mu - player2_rating.mu
-            
+            else:
                 await ctx.send(
                     f"**alrighty, here's what ive got**\n"
                     f" winnin: <@{player2_id}> | ya new number: {new_p2_rating.mu:.2f} (+{p2_change:.2f})\n"
                     f" losin: <@{player1_id}> | ya new number: {new_p1_rating.mu:.2f} ({p1_change:.2f})\n\n"
                     f"*now get outta here. shoo, shoo!*"
                 )
-            
-                del active_matches[ctx.channel.id]
-                checked = True
-                await asyncio.sleep(10)
+
+            del active_matches[ctx.channel.id]
+            checked = True
+            await asyncio.sleep(10)
+            try:
                 await ctx.channel.delete()
-            
+            except discord.Forbidden:
+                pass
         else:
-            await ctx.send("huh? i dont got a clue what youre talkin about. speak up.")
-            
+            await ctx.send("Confirmation didn't match — match not recorded.")
+
     except asyncio.TimeoutError:
         await ctx.send("ya took too long. use !report to get my attention again when you're ready.")
 
