@@ -357,18 +357,47 @@ async def report(ctx):
         if checked:
             return
 
-        # Determine which player was named as the winner in the initial reply
-        if p1_name.lower() in next_message.content.lower():
-            winner_id, loser_id = player1_id, player2_id
-            winner_name, loser_name = p1_name, p2_name
-            winner_rating_first, ranks = True, [1, 2]
-        elif p2_name.lower() in next_message.content.lower():
-            winner_id, loser_id = player2_id, player1_id
-            winner_name, loser_name = p2_name, p1_name
-            winner_rating_first, ranks = False, [2, 1]
-        else:
+        # Determine which player was named as the winner in the initial reply.
+        # Accept mentions, display names, or allow the reporter to declare themself the winner.
+        content_lower = next_message.content.lower()
+        winner_id = loser_id = None
+
+        # Check for explicit mentions first
+        for m in next_message.mentions:
+            if m.id == player1_id:
+                winner_id = player1_id
+                loser_id = player2_id
+                break
+            if m.id == player2_id:
+                winner_id = player2_id
+                loser_id = player1_id
+                break
+
+        # Check by name if no mention
+        if winner_id is None:
+            if p1_name.lower() in content_lower:
+                winner_id = player1_id
+                loser_id = player2_id
+            elif p2_name.lower() in content_lower:
+                winner_id = player2_id
+                loser_id = player1_id
+
+        # If still undetermined, and the reporter is one of the players, assume they mean themselves
+        if winner_id is None and next_message.author.id in {player1_id, player2_id}:
+            winner_id = next_message.author.id
+            loser_id = player2_id if winner_id == player1_id else player1_id
+
+        if winner_id is None:
             await ctx.send("huh? i dont got a clue what youre talkin about. speak up.")
             return
+
+        # Normalize names for messaging
+        if winner_id == player1_id:
+            winner_name, loser_name = p1_name, p2_name
+            ranks = [1, 2]
+        else:
+            winner_name, loser_name = p2_name, p1_name
+            ranks = [2, 1]
 
         # Remove the initial reporter's message if possible
         try:
@@ -390,8 +419,18 @@ async def report(ctx):
             await ctx.send("No confirmation from the other player. use !report again when you're ready.")
             return
 
-        # Verify loser repeated the winner's name
-        if winner_name.lower() in confirm_msg.content.lower():
+        # Verify loser repeated the winner's name or mentioned the winner
+        confirm_content = confirm_msg.content.lower()
+        confirmed = False
+        if winner_name.lower() in confirm_content:
+            confirmed = True
+        else:
+            for m in confirm_msg.mentions:
+                if m.id == winner_id:
+                    confirmed = True
+                    break
+
+        if confirmed:
             await ctx.send(f"**{winner_name}** really won, then. its in the scroll.")
 
             # Compute TrueSkill changes locally
